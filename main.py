@@ -10,6 +10,8 @@ from langchain.chat_models import ChatOpenAI
 from langchain.document_loaders import UnstructuredFileLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain import OpenAI
+from langchain.document_loaders import PyPDFLoader  # for loading the pdf
+from langchain.chains import ChatVectorDBChain # for chatting with the pdf
 
 openai.organization = "org-BFzxcJ0l6gshdj1KE9M2fPvN"
 openai.api_key = "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"
@@ -22,10 +24,14 @@ def create_embedding():
     # txt_doc = UnstructuredFileLoader("./source/data.txt").load()
     with open("./source/data.txt") as f:
         txt_doc = f.read()
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-    texts = text_splitter.split_text(txt_doc)
+
+    loader = PyPDFLoader("./source/Wi-Fi_EasyMesh_Specification_v3.pdf")
+    pages = loader.load_and_split()
+
+    # text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+    # texts = text_splitter.split_text(txt_doc)
     embeddings = OpenAIEmbeddings()
-    docsearch = Chroma.from_texts(texts, embeddings, metadatas=[{"source": f"Text chunk {i} of {len(texts)}"} for i in range(len(texts))], persist_directory="db")
+    docsearch = Chroma.from_documents(pages, embeddings, persist_directory="db")
     docsearch.persist()
     docsearch = None
     print("created embedding db is done")
@@ -33,11 +39,14 @@ def create_embedding():
 def search_embedding(user_input):
     embeddings = OpenAIEmbeddings()
     docsearch = Chroma(persist_directory="db", embedding_function=embeddings)
-    chain = RetrievalQAWithSourcesChain.from_chain_type(OpenAI(temperature=0), chain_type="stuff",
-                                                        retriever=docsearch.as_retriever())
+    # chain = RetrievalQAWithSourcesChain.from_chain_type(OpenAI(temperature=0), chain_type="stuff",
+    #                                                    retriever=docsearch.as_retriever())
+
+    chain = ChatVectorDBChain.from_llm(OpenAI(temperature=0.9, model_name="gpt-3.5-turbo"),
+                                        docsearch, return_source_documents=True)
 
     # user_input = input("What's your question: ")
-    result = chain({"question": user_input}, return_only_outputs=True)
+    result = chain({"question": user_input, "chat_history": ""})
     print("Answer: " + result["answer"].replace('\n', ' '))
     print("Source: " + result["sources"])
 
@@ -60,8 +69,8 @@ def search_embedding(user_input):
     # qa_txt.run(query)
 
 def main():
-    create_embedding()
-    search_embedding("Enable E-mail Log setting")
+    # create_embedding()
+    search_embedding("list down the field in Steering Policy TLV format ")
 
 if __name__ == "__main__":
     main()
